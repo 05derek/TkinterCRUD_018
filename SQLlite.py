@@ -11,7 +11,7 @@ def init_db():
     cur = conn.cursor()
     cur.execute('''
         CREATE TABLE IF NOT EXISTS nilai_siswa (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            id INTEGER PRIMARY KEY AUTOINCREMENT,   
             nama_siswa TEXT NOT NULL, 
             biologi REAL NOT NULL, 
             fisika REAL NOT NULL, 
@@ -31,6 +31,26 @@ def insert_nilai(nama, bio, fis, ing, prediksi):
     ''', (nama, bio, fis, ing, prediksi))
     conn.commit()
     conn.close()
+
+# ========= FUNGSI UPDATE & DELETE (DITAMBAHKAN) =========
+def update_nilai(id_data, nama, bio, fis, ing, prediksi):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute('''
+        UPDATE nilai_siswa
+        SET nama_siswa=?, biologi=?, fisika=?, inggris=?, prediksi_fakultas=?
+        WHERE id=?
+    ''', (nama, bio, fis, ing, prediksi, id_data))
+    conn.commit()
+    conn.close()
+
+def delete_nilai(id_data):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute('DELETE FROM nilai_siswa WHERE id=?', (id_data,))
+    conn.commit()
+    conn.close()
+# ========================================================
 
 def fetch_all():
     conn = sqlite3.connect(DB_FILE)
@@ -116,6 +136,14 @@ class NilaiApp:
         self.btn_clear = ttk.Button(btn_frame, text='Clear', command=self.clear_form)
         self.btn_clear.grid(row=0, column=1, padx=(0, 8))
 
+        #TOMBOL UPDATE & DELETE (DITAMBAHKAN)
+        self.btn_update = ttk.Button(btn_frame, text='Update', command=self.on_update)
+        self.btn_update.grid(row=0, column=2, padx=(0, 8))
+
+        self.btn_delete = ttk.Button(btn_frame, text='Delete', command=self.on_delete)
+        self.btn_delete.grid(row=0, column=3, padx=(0, 8))
+
+
         columns = ('id', 'nama', 'biologi', 'fisika', 'inggris', 'prediksi')
         self.tree = ttk.Treeview(frm_right, columns=columns, show='headings')
 
@@ -140,13 +168,16 @@ class NilaiApp:
         frm_right.grid_rowconfigure(0, weight=1)
         frm_right.grid_columnconfigure(0, weight=1)
 
+        # EVENT KLIK UNTUK PILIH DATA (DITAMBAHKAN)
+        self.tree.bind("<<TreeviewSelect>>", self.on_row_select)
         self.summary = ttk.Label(root, text='', anchor='w')
         self.summary.grid(row=1, column=0, columnspan=2, sticky='we', padx=14)
 
+        self.selected_id = None
         self.load_table()
 
 
-    # ==== FUNCTIONS YANG DIPINDAHKAN KELUAR DARI _init_ ====
+    # ==== FUNCTIONS ====
 
     def validate_inputs(self, nama, bio_s, fis_s, ing_s):
         if not nama.strip():
@@ -208,21 +239,74 @@ class NilaiApp:
         self.entry_bio.delete(0, tk.END)
         self.entry_fis.delete(0, tk.END)
         self.entry_ing.delete(0, tk.END)
+        self.selected_id = None
 
-    def export_csv(self):
-        rows = fetch_all()
-        if not rows:
-            messagebox.showinfo('Export CSV', 'Tidak ada data.')
+    # ============= EVENT PILIH ROW (DITAMBAHKAN) =============
+    def on_row_select(self, event):
+        selected = self.tree.selection()
+        if not selected:
             return
 
-        filename = f'nilai_siswa_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        item = self.tree.item(selected[0])
+        id_data, nama, bio, fis, ing, prediksi = item["values"]
 
-        with open(filename, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['id','nama_siswa','biologi','fisika','inggris','prediksi_fakultas'])
-            writer.writerows(rows)
+        self.selected_id = id_data
 
-        messagebox.showinfo('Export CSV', f'Data diekspor ke {filename}')
+        self.entry_nama.delete(0, tk.END)
+        self.entry_nama.insert(0, nama)
+
+        self.entry_bio.delete(0, tk.END)
+        self.entry_bio.insert(0, bio)
+
+        self.entry_fis.delete(0, tk.END)
+        self.entry_fis.insert(0, fis)
+
+        self.entry_ing.delete(0, tk.END)
+        self.entry_ing.insert(0, ing)
+    # ==========================================================
+
+    # ============= UPDATE DATA (DITAMBAHKAN) ==================
+    def on_update(self):
+        if self.selected_id is None:
+            messagebox.showwarning("Update", "Pilih data pada tabel terlebih dahulu!")
+            return
+
+        nama = self.entry_nama.get()
+        bio_s = self.entry_bio.get()
+        fis_s = self.entry_fis.get()
+        ing_s = self.entry_ing.get()
+
+        if not self.validate_inputs(nama, bio_s, fis_s, ing_s):
+            return
+
+        bio, fis, ing = float(bio_s), float(fis_s), float(ing_s)
+        prediksi = predict_fakultas(bio, fis, ing)
+
+        update_nilai(self.selected_id, nama, bio, fis, ing, prediksi)
+        messagebox.showinfo("Update", "Data berhasil diupdate.")
+
+        self.clear_form()
+        self.load_table()
+    # ==========================================================
+
+    # ============= DELETE DATA (DITAMBAHKAN) ==================
+    def on_delete(self):
+        if self.selected_id is None:
+            messagebox.showwarning("Delete", "Pilih data yang ingin dihapus!")
+            return
+
+        confirm = messagebox.askyesno("Hapus", "Yakin ingin menghapus data ini?")
+        if not confirm:
+            return
+
+        delete_nilai(self.selected_id)
+
+        messagebox.showinfo("Delete", "Data berhasil dihapus.")
+
+        self.clear_form()
+        self.load_table()
+    # ==========================================================
+
 
 if __name__ == '__main__':
     init_db()
